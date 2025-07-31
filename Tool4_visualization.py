@@ -53,6 +53,7 @@ def optimization_visualizer_tool(query: str) -> str:
         return f"시각화 중 오류 발생: {str(e)}\n📋 오류 타입: {type(e).__name__}"
 
 
+
 # 최적화 결과 파싱 및 데이터 구조화 함수
 def parse_optimization_result(optimization_text):
     
@@ -103,7 +104,7 @@ def parse_optimization_result(optimization_text):
     # Makespan 추출 - 더 유연한 패턴
     makespan_patterns = [
         r'전체 완료 시간 \(Makespan\): ([\d.]+)분',
-        r'🏆 전체 완료 시간.*?: ([\d.]+)분',
+        r'전체 완료 시간.*?: ([\d.]+)분',
         r'Makespan.*?: ([\d.]+)분'
     ]
     
@@ -114,7 +115,7 @@ def parse_optimization_result(optimization_text):
             makespan = float(makespan_match.group(1))
             break
     
-    print(f"🏆 Makespan: {makespan:.1f}분")
+    print(f"Makespan: {makespan:.1f}분")
     
     result = {
         'lines': lines_data,
@@ -126,12 +127,13 @@ def parse_optimization_result(optimization_text):
         }
     }
     
-    print(f"📈 파싱 결과: {result['summary']['total_lines']}개 라인, {result['summary']['total_dishes']}개 반찬")
+    print(f"파싱 결과: {result['summary']['total_lines']}개 라인, {result['summary']['total_dishes']}개 반찬")
     
     return result
 
+
+# 간트차트 생성 함수
 def create_gantt_chart(parsed_data):
-    """간트차트 생성 - 호버 템플릿 완전 수정"""
     
     if not parsed_data['lines']:
         print("생성할 라인 데이터가 없습니다.")
@@ -148,7 +150,7 @@ def create_gantt_chart(parsed_data):
             continue
             
         for dish_idx, dish in enumerate(line_data['dishes']):
-            # 호버 텍스트를 미리 포맷팅
+            # 텍스트 포맷팅
             hover_text = f"""<b>{dish['name']}</b><br>조리시간: {dish['time']:.1f}분<br>시작시간: {dish['start']:.1f}분<br>종료시간: {dish['end']:.1f}분<br>라인: {line_id}"""
             
             # 각 반찬마다 개별 trace 생성
@@ -169,7 +171,7 @@ def create_gantt_chart(parsed_data):
                 )
             ))
             
-            # 반찬 이름을 라벨로 추가 (선택사항)
+            # 반찬 이름을 라벨로 추가
             mid_point = (dish['start'] + dish['end']) / 2
             fig.add_annotation(
                 x=mid_point,
@@ -185,11 +187,11 @@ def create_gantt_chart(parsed_data):
     
     fig.update_layout(
         title={
-            'text': '🍱 반찬 생산라인 간트차트',
+            'text': '생산라인 간트차트',
             'x': 0.5,
             'font': {'size': 20}
         },
-        xaxis_title="시간 (분)",
+        xaxis_title="시간(분)",
         yaxis_title="생산라인",
         yaxis=dict(
             tickmode='array',
@@ -281,7 +283,7 @@ def create_efficiency_chart(parsed_data):
     
     fig.update_layout(
         title={
-            'text': '📊 생산라인 효율성 분석 대시보드',
+            'text': '생산라인 효율성 분석 대시보드',
             'x': 0.5,
             'font': {'size': 20}
         },
@@ -331,7 +333,7 @@ def create_bottleneck_analysis(parsed_data):
     
     fig.update_layout(
         title={
-            'text': '🔥 시간대별 생산라인 가동 현황',
+            'text': '시간대별 생산라인 가동 현황',
             'x': 0.5,
             'font': {'size': 20}
         },
@@ -344,11 +346,12 @@ def create_bottleneck_analysis(parsed_data):
     
     return fig
 
+
+# 종합 분석 리포트 생성 함수
 def create_summary_report(parsed_data):
-    """종합 분석 리포트 생성"""
     
     if not parsed_data['lines']:
-        return "❌ 분석할 데이터가 없습니다."
+        return "분석할 데이터가 없습니다."
     
     summary = f"""
             반찬 생산 최적화 결과 종합 분석
@@ -418,7 +421,7 @@ def setup_plotly_renderer():
             print("PNG 렌더러 설정 완료 (대체)")
             
     except Exception as e:
-        print(f"⚠️ 렌더러 설정 실패: {e}")
+        print(f"렌더러 설정 실패: {e}")
         # 기본 설정 유지
 
 
@@ -465,7 +468,7 @@ def safe_show_figure(fig, chart_name="차트"):
                         fig.write_image(f.name)
                         img_path = f.name
                     
-                    print(f"📁 {chart_name} 이미지 저장: {img_path}")
+                    print(f"{chart_name} 이미지 저장: {img_path}")
                     return True, f"{chart_name} 이미지로 저장 완료: {img_path}"
                     
                 except Exception as e4:

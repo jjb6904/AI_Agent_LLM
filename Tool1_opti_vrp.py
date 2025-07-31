@@ -20,7 +20,8 @@ from langchain_ollama import OllamaEmbeddings
 # 설정 상수
 # =====================================================================
 DEFAULT_MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
-DEFAULT_NUM_LINES = 4
+
+DEFAULT_NUM_LINES = 8
 DEFAULT_MAX_TIME = 240
 DEFAULT_BASE_CHANGEOVER_TIME = 2
 DEFAULT_MAX_ADDITIONAL_TIME = 2
@@ -476,14 +477,11 @@ def print_solution(manager: Any, routing: Any, solution: Any,
 # 4. 벡터 데이터베이스 저장 함수
 # =====================================================================
 # 4-1. 최적화 결과를 벡터 데이터베이스에 저장하는 함수
-def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
-                                 ordered_dishes: List[str], cooking_times: Dict[str, float],
-                                 num_depots: int, file_name: Optional[str] = None) -> None:
+def save_optimization_to_vectordb(manager, routing, solution, 
+                                           ordered_dishes, cooking_times, 
+                                           num_depots, file_name=None):
     try:
-        # 임베딩 모델 로드
         embeddings = OllamaEmbeddings(model="mxbai-embed-large")
-        
-        # 벡터 스토어 생성/로드
         vector_store = Chroma(
             collection_name="optimization_results",
             persist_directory=OPTIMIZATION_DB_PATH,
@@ -492,15 +490,11 @@ def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
         
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         documents = []
-        max_line_time = 0
-        line_info = []
         
-        # 라인별 데이터 추출
+        # 각 라인별로 구조화된 데이터 생성
         for line_id in range(routing.vehicles()):
             index = routing.Start(line_id)
-            route_time = 0
-            line_dishes = []
-            line_times = []
+            sequence = 1  # 생산 순서
             
             while not routing.IsEnd(index):
                 node = manager.IndexToNode(index)
@@ -510,89 +504,29 @@ def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
                     dish_name = ordered_dishes[dish_idx]
                     cooking_time = cooking_times[dish_name]
                     
-                    line_dishes.append(dish_name)
-                    line_times.append(round(cooking_time, 1))
-                    route_time += cooking_time
+                    # 개별 작업을 하나의 문서로 저장
+                    doc_content = f"라인{line_id + 1} 순서{sequence}: {dish_name}"
                     
-                    previous_index = index
-                    index = solution.Value(routing.NextVar(index))
-                    if not routing.IsEnd(index):
-                        route_time += routing.GetArcCostForVehicle(previous_index, index, line_id)
-                else:
-                    index = solution.Value(routing.NextVar(index))
-            
-            if route_time > 0:  # 작업이 있는 라인만
-                line_info.append({
-                    'line_id': line_id + 1,
-                    'dishes': line_dishes,
-                    'times': line_times,
-                    'total_time': round(route_time, 1)
-                })
-                max_line_time = max(max_line_time, route_time)
-        
-        # 저장된 정보 1 : 전체 요약 문서
-        summary_text = f"""
-                        최적화 실행 시간: {timestamp}
-                        전체 완료시간: {max_line_time:.1f}분
-                        제한시간 대비: {max_line_time/DEFAULT_MAX_TIME*100:.1f}%
-                        제약조건 만족: {'예' if max_line_time <= DEFAULT_MAX_TIME else '아니오'}
-                        총 반찬 종류: {len(ordered_dishes)}개
-                        활성 생산라인: {len(line_info)}개
-                        입력파일: {file_name or '알 수 없음'}
-                        """.strip()
-        
-        documents.append(Document(
-            page_content=summary_text,
-            metadata={
-                "type": "summary",
-                "timestamp": timestamp,
-                "makespan": max_line_time,
-                "file_name": file_name or "unknown"
-            }
-        ))
-        
-        # 저장된 정보 2 : 라인별 상세 정보
-        for line in line_info:
-            schedule_text = " → ".join(line['dishes'])
-            times_text = " → ".join([f"{t}분" for t in line['times']])
-            
-            line_text = f"""
-                        라인{line['line_id']} 생산스케줄:
-                        생산순서: {schedule_text}
-                        조리시간: {times_text}
-                        총 작업시간: {line['total_time']}분
-                        효율성: {line['total_time']/DEFAULT_MAX_TIME*100:.1f}%
-                        """.strip()
-            
-            documents.append(Document(
-                page_content=line_text,
-                metadata={
-                    "type": "line_detail",
-                    "line_number": line['line_id'],
-                    "total_time": line['total_time'],
-                    "timestamp": timestamp
-                }
-            ))
-        
-        # 저장된 정보 3 : 개별 반찬 정보
-        dish_texts = []
-        for line in line_info:
-            for dish, time in zip(line['dishes'], line['times']):
-                dish_texts.append(f"{dish} 반찬이 라인{line['line_id']}에서 {time}분간 생산됨")
-        
-        if dish_texts:
-            documents.append(Document(
-                page_content=". ".join(dish_texts),
-                metadata={
-                    "type": "dish_details",
-                    "timestamp": timestamp,
-                    "total_dishes": len(dish_texts)
-                }
-            ))
+                    documents.append(Document(
+                        page_content=doc_content,
+                        metadata={
+                            "type": "production_step",
+                            "line_no": line_id + 1,
+                            "sequence": sequence,
+                            "product_name": dish_name,
+                            "cooking_time": round(cooking_time, 1),
+                            "timestamp": timestamp,
+                            "file_name": file_name or "unknown"
+                        }
+                    ))
+                    
+                    sequence += 1
+                
+                index = solution.Value(routing.NextVar(index))
         
         # 벡터 DB에 저장
         vector_store.add_documents(documents)
-        print(f"최적화 결과 벡터 DB 저장 완료 ({len(documents)}개 문서)")
+        print(f"구조화된 최적화 결과 저장 완료 ({len(documents)}개 작업)")
         
     except Exception as e:
         print(f"벡터 DB 저장 중 오류: {str(e)}")
