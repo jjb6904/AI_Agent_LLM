@@ -68,9 +68,13 @@ tools = [
     Tool(
     name="vector_search",
     description="""
-    벡터 데이터베이스 통합 검색:
-    - 상품 유사도 검색: '김치와 비슷한 반찬들', '된장 관련 상품들'
-    - 최적화 결과 검색: '최적화 결과 어때?', '효율성 분석', '라인별 성능'
+    최적화 결과 벡터 데이터베이스 검색:
+    - line_no : 생산라인 번호(1~8번)
+    - sequence : 생산 순서, 몇번째로 생산되는지
+    - product_name : 제품명(예: 호두 멸치볶음_대용량, 소고기 가지볶음 등)
+    - cooking_time : 생산 시간(분)
+    - timestamp : 최적화를 한 시간(YYYY-MM-DD HH:MM:SS)
+    - 최적화 결과 검색: '생산라인 2의 6번째 생산제품은 뭐야?'
     자연어로 상품이나 최적화 결과를 검색할 때 사용하세요.
     """,
     func=Tool5_vector_db.vector_search_tool
@@ -124,16 +128,16 @@ main_agent = initialize_agent(
         - Use for: specific date queries, production records, historical data analysis
         - Always include date conditions in WHERE clause when user mentions specific dates
 
-    5. vector_search: For searching both product similarity and optimization results using vector database
-        - Product search: finding similar products, natural language product search
-        - Optimization analysis: querying saved optimization results, performance analysis
+    5. vector_search: For searching production optimization results from vector database
+        - Search optimization results: query saved production schedules, line assignments, and performance metrics
+        - Returns structured data in table format: Line No | Seq | Product Name | Production Time
 
     Tool selection guide:
         - Data analysis: 생산 데이터 분석/시각화가 필요할 때  
         - Dish optimization: 반찬 생산라인 최적화가 필요할 때
         - Optimization visualizer: 최적화 결과를 차트로 보고 싶을 때
         - SQL query: 데이터베이스 조회가 필요할 때
-        - Vector search: 상품 유사도 검색이나 자연어 상품 검색이 필요할 때
+        - Vector search: 최적화 결과를 벡터 데이터베이스에서 검색할 때
 
     Always provide helpful answers in Korean, explain which tool you're using and why, and focus on improving production efficiency and reducing manufacturing costs.
 """
