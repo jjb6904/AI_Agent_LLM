@@ -13,8 +13,9 @@ excel_path = "/Users/jibaekjang/VS-Code/AI_Agent/product_data_all.xlsx"
 product_db_location = "./chroma_langchain_product_db"
 optimization_db_location = "./chroma_optimization_results_db"
 
+
+# 임베딩 모델 로드 함수
 def get_embeddings():
-    """임베딩 모델 로드"""
     global _embeddings
     if _embeddings is None:
         from langchain_ollama import OllamaEmbeddings
@@ -23,9 +24,11 @@ def get_embeddings():
 
 
 
+# 상품 벡터 스토어 로드/생성
 def get_product_vector_store():
-    """상품 벡터 스토어 로드/생성"""
+    
     global _product_vector_store
+    
     if _product_vector_store is None:
         from langchain_chroma import Chroma
         from langchain_core.documents import Document
@@ -60,9 +63,11 @@ def get_product_vector_store():
     return _product_vector_store
 
 
+# 최적화 결과 벡터 스토어 로드
 def get_optimization_vector_store():
-    """최적화 결과 벡터 스토어 로드"""
+    
     global _optimization_vector_store
+    
     if _optimization_vector_store is None:
         from langchain_chroma import Chroma
         
@@ -79,25 +84,34 @@ def get_optimization_vector_store():
     
     return _optimization_vector_store
 
+
+# 상품정보 검색기
 def get_product_retriever():
-    """상품 검색기 생성"""
+    
     global _product_retriever
+    
     if _product_retriever is None:
         vector_store = get_product_vector_store()
         _product_retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+    
     return _product_retriever
 
+
+# 최적화 결과 검색기
 def get_optimization_retriever():
-    """최적화 결과 검색기 생성"""
+    
     global _optimization_retriever
+    
     if _optimization_retriever is None:
         vector_store = get_optimization_vector_store()
         if vector_store is not None:
             _optimization_retriever = vector_store.as_retriever(search_kwargs={"k": 2})
     return _optimization_retriever
 
+
+# 상품 데이터 검색 함수
 def search_product_data(query: str) -> str:
-    """상품 데이터 검색"""
+
     try:
         retriever = get_product_retriever()
         results = retriever.invoke(query)
@@ -118,8 +132,10 @@ def search_product_data(query: str) -> str:
     except Exception as e:
         return f"상품 검색 오류: {str(e)}"
 
+
+# 최적화 결과 검색
 def search_optimization_results(query: str) -> str:
-    """최적화 결과 검색"""
+
     try:
         retriever = get_optimization_retriever()
         
@@ -146,11 +162,9 @@ def search_optimization_results(query: str) -> str:
 
 
 
-# Tool
-# ============================================================================
-
+# 벡터 검색(상품 정보 + 최적화 결과) Tool
 def vector_search_tool(query: str) -> str:
-    """통합 벡터 검색 Tool - 상품 검색 + 최적화 결과 검색"""
+
     try:
         results = []
         

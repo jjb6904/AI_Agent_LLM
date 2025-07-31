@@ -5,24 +5,27 @@ import pandas as pd
 import numpy as np
 import os
 from typing import Optional
+from langchain.memory import ConversationBufferWindowMemory
 
-# Tools
-#import Tool1_opti_vrp           # 최적화
-import Tool1_opti_vrp
+
+# Tool
+import Tool1_opti_vrp           # 최적화
 import Tool2_data_analysis      # 데이터 분석
 import Tool4_visualization      # plotly기반 시각화
 import Tool3_sql                # sql기반 검색
 import Tool5_vector_db          # vector_db연결(RAG)
 
 
-# 경고메세지 제거
-import warnings
-warnings.filterwarnings('ignore', category=UserWarning, module='urllib3')
 
+# LLM : Gemma3:12b 양자화 버전
+# ============================================================================
+model = OllamaLLM(model="gemma3:12b-it-qat",
+                  temperature=0.1,     # 아주 약한 창의성 0.1정도
+                  repeat_penalty=1.1,  # 반복되는 토큰에 패널티 부여(10%만큼)
+                  top_k=20,            # 가장 높은 확률을 지닌 토큰 20개만 답변생성에 사용
+                  timeout=30,          # 추론시간 30초로 제한
+                  verbose= False)      # 추론과정 생략
 
-
-# 모델 객체 생성 : gemma3:12b qat방식의 양자화 모델(4비트로 축소시킴) -> 디스틸레이션
-model = OllamaLLM(model="gemma3:12b-it-qat")
 
 
 
@@ -34,7 +37,7 @@ tools = [
         description="""
         반찬 생산라인 최적화를 수행합니다. 
         Excel 파일의 반찬 주문 데이터를 분석하여 생산라인의 최적 스케줄을 생성합니다.
-        입력 형식: '파일경로' (예: '/path/to/data.xlsx')
+        입력 형식: '/Users/jibaekjang/VS-Code/AI_Agent/product_data_2022_04_01.xlsx'파일 최적화 해줘
         반찬 생산 스케줄링, 최적화, 생산라인 배치 등의 질문에 사용하세요.
         """,
         func=Tool1_opti_vrp.dish_optimization_tool
@@ -48,7 +51,7 @@ tools = [
        name="sql_database_query",
        description = "MySQL 데이터베이스에서 정확한 데이터 조회. 사용자가 특정 날짜를 언급하면 반드시 해당 날짜 조건을 WHERE 절에 포함해야 함",
        func=Tool3_sql.sql_query_tool
-   ),
+    ),
     Tool(
         name="optimization_visualizer",
         description="""
@@ -71,8 +74,17 @@ tools = [
     자연어로 상품이나 최적화 결과를 검색할 때 사용하세요.
     """,
     func=Tool5_vector_db.vector_search_tool
+)]
+
+
+
+# Memory : 대화 맥락 파악
+# ============================================================================
+memory = ConversationBufferWindowMemory(
+    k=3,  # 마지막 3개 대화만 기억
+    memory_key="chat_history", 
+    return_messages=True
 )
-]
 
 
 
@@ -81,21 +93,25 @@ tools = [
 main_agent = initialize_agent(
    tools=tools,
    llm=model,
-   agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+   agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
    verbose=True,
-   max_iterations=5,
+   memory=memory,
+   max_iterations=3,
    handle_parsing_errors=True,
    agent_kwargs={
     'prefix': """
-    You are an intelligent Korean side dish production optimization assistant. You have access to four powerful tools:
+    You are an intelligent Korean side dish production optimization assistant. 
+    
+    IMPORTANT: If you are not certain about any information, always respond with "I don't know" or "I'm not sure" rather than making assumptions or guessing.
 
+    You have access to four powerful tools:
     1. data_analysis: For statistical analysis and visualization of production data
         - Use for: production trends, efficiency statistics, charts, graphs, data exploration
         - Analyze production volumes, time patterns, and performance metrics
 
     2. dish_optimization: For Korean side dish production line optimization
         - Use for: production scheduling, line optimization, efficiency improvement
-        - Input format: 'file_path' (example: '/path/to/data.xlsx')
+        - Input format: 'file_path' (example: '/Users/jibaekjang/VS-Code/AI_Agent/product_data_2022_04_01.xlsx')
         - This tool analyzes dish similarity, calculates changeover times, and creates optimal schedules
         - Optimizes production lines for maximum efficiency
 
@@ -124,77 +140,33 @@ main_agent = initialize_agent(
    }
 )
 
-# 사용 예시 및 도움말
-# ============================================================================
-def print_help():
-    """사용법 안내"""
-    print("""
-🍱 생산 최적화 Agent 시스템
-================================================
 
-💡 사용 가능한 기능:
 
-1️⃣ 반찬 생산라인 최적화
-   예시: "생산전략_비교_분석데이터_전처리.xlsx 파일을 최적화해줘"
-   예시: "/path/to/data.xlsx 반찬 생산 최적화 실행"
-
-2️⃣ 데이터 분석 및 시각화  
-   예시: "월별 주문 트렌드를 차트로 보여줘"
-   예시: "상위 10개 반찬의 생산량 분석해줘"
-
-3️⃣ 최적화 결과 시각화
-   예시: "간트차트로 보여줘"
-   예시: "효율성 분석해줘"  
-   예시: "병목 구간 히트맵 생성"
-   예시: "전체 시각화해줘"
-
-4️⃣ SQL 데이터베이스 조회
-   예시: "2022년 4월 1일 주문 데이터 조회해줘"
-   예시: "특정 반찬의 생산 이력을 보여줘"
-
-5️⃣ 벡터 데이터베이스 통합 검색 (RAG)
-   • 상품 검색: "김치와 비슷한 반찬들", "된장 관련 상품들"
-   • 최적화 분석: "최적화 결과 어때?", "어느 라인이 효율적?", "성능 분석해줘"
-
-🚀 전체 시스템 특징:
-   • 248개 반찬 종류별 유사도 분석
-   • AI 기반 전환시간 계산  
-   • VRP 알고리즘으로 스케줄 최적화
-   • 다중 생산라인 동시 최적화
-   • 간트차트, 효율성 분석, 병목구간 히트맵
-   • RAG 기반 의미적 상품 검색
-
-📝 명령어: 'help' (도움말), 'q' (종료)
-================================================
-    """)
-
-# 메인 실행 루프
+# 메인 실행함수 정의
 # ============================================================================
 def main():
     """메인 실행 함수"""
-    print_help()
-    
     while True:
         print("\n" + "="*60)
-        question = input("🤖 질문을 입력하세요 (help/q) : ")
+        question = input("질문을 입력하세요(종료 : q) : ")
         print()
         
         if question.lower() == "q":
-            print("👋 시스템을 종료합니다.")
+            print("시스템을 종료합니다.")
             break
-        elif question.lower() == "help":
-            print_help()
-            continue
-        
         try:
-            print("🔄 처리 중...")
+            print("처리 중...")
             result = main_agent.invoke(question)
-            print(f"\n✨ 답변:\n{result}")
+
+            clean_output = result['output'].replace('<end_of_turn>', '').strip()
+            print(f"\n[답변] \n{clean_output}")
             
         except Exception as e:
-            print(f"❌ 오류 발생: {str(e)}")
-            print("💡 다시 시도하거나 'help' 명령어로 사용법을 확인해주세요.")
+            print(f"오류 발생: {str(e)}")
 
+
+
+# 메인 실행
 # ============================================================================
 if __name__ == "__main__":
     main()

@@ -1,15 +1,8 @@
-"""
-반찬 생산 최적화 시스템
-- VRP 기반 다중 생산라인 최적화
-- 벡터 임베딩을 활용한 반찬 간 전환시간 계산
-- 최적화 결과 벡터 DB 저장
-"""
-
+# Tool1_opti_vrp.py : 생산 최적화 Tool
 import os
 import sys
 import datetime
 from typing import Dict, List, Tuple, Optional, Any
-
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -23,7 +16,7 @@ from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 
 
-# =====================================================================
+
 # 설정 상수
 # =====================================================================
 DEFAULT_MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
@@ -37,7 +30,7 @@ OPTIMIZATION_DB_PATH = "./chroma_optimization_results_db"
 OPTIMIZATION_TIME_LIMIT = 60
 
 
-# =====================================================================
+
 # 유틸리티 클래스
 # =====================================================================
 class StdoutCapture:
@@ -56,48 +49,32 @@ class StdoutCapture:
         return ''.join(self.contents)
 
 
-# =====================================================================
-# 전역 변수 (Agent 연동용)
+
+# 전역 변수(Agent 연동용)
 # =====================================================================
 last_optimization_output = None
 last_optimization_text = None
 current_file_name = None
 
 
+
+
+## 1. 벡터 임베딩 관련 함수 ##
 # =====================================================================
-# 1. 벡터 임베딩 관련 함수
-# =====================================================================
+# 1-1. 반찬명 벡터 임베딩 생성 함수
 def create_dish_embeddings(df: pd.DataFrame, 
                           dish_column: str = '상품명',
                           model_name: str = DEFAULT_MODEL_NAME) -> Dict[str, Any]:
-    """
-    반찬명을 벡터 임베딩으로 변환
     
-    Args:
-        df: 반찬 주문 데이터 DataFrame
-        dish_column: 반찬명 컬럼명
-        model_name: 사용할 임베딩 모델명
-    
-    Returns:
-        dict: {
-            'dish_names': 고유 반찬명 리스트,
-            'embeddings': 임베딩 배열,
-            'embedding_dim': 임베딩 차원,
-            'model': 모델 객체
-        }
-    """
-    print("Sentence Transformers 모델 로딩 중...")
     model = SentenceTransformer(model_name)
     
     # 고유한 반찬명 추출
     unique_dishes = df[dish_column].unique().tolist()
-    print(f"총 {len(unique_dishes)}개의 고유한 반찬 발견")
     
     # 벡터 임베딩 생성
-    print("벡터 임베딩 생성 중...")
     embeddings = model.encode(unique_dishes, show_progress_bar=True)
     
-    print(f"임베딩 완료! 차원: {embeddings.shape}")
+    print(f"임베딩 완료 / 차원 : {embeddings.shape}")
     
     return {
         'dish_names': unique_dishes,
@@ -106,33 +83,21 @@ def create_dish_embeddings(df: pd.DataFrame,
         'model': model
     }
 
-
+# 1-2. 전환시간 계산 함수
 def calculate_changeover_matrix(embedding_result: Dict[str, Any],
                                base_time: int = DEFAULT_BASE_CHANGEOVER_TIME,
                                max_additional_time: int = DEFAULT_MAX_ADDITIONAL_TIME) -> pd.DataFrame:
-    """
-    벡터 임베딩 기반 전환시간 매트릭스 계산
-    
-    Args:
-        embedding_result: create_dish_embeddings 함수 결과
-        base_time: 최소 전환시간 (분)
-        max_additional_time: 최대 추가 전환시간 (분)
-    
-    Returns:
-        전환시간 매트릭스 DataFrame
-    """
+
     dish_names = embedding_result['dish_names']
     embeddings = embedding_result['embeddings']
     
-    print("전환 시간 매트릭스 계산 중...")
-    
-    # 코사인 거리 계산
+    # 코사인 거리 계산 : 코사인 유사도 기반 전환시간 계산용
     cosine_dist_matrix = cosine_distances(embeddings)
     
-    # 거리를 전환시간으로 변환
+    # 코사인 거리를 전환시간으로 변환 : 기본시간 + (코사인 거리 * 최대 추가시간)
     changeover_matrix = base_time + (cosine_dist_matrix * max_additional_time)
     
-    # 대각선 요소는 0 (같은 반찬)
+    # 대각선 요소는 0 : 같은 반찬끼리는 전환시간이 존재하지 않음
     np.fill_diagonal(changeover_matrix, 0)
     
     # DataFrame 변환
@@ -147,16 +112,13 @@ def calculate_changeover_matrix(embedding_result: Dict[str, Any],
     return changeover_df
 
 
+
+
+## 2. 조리시간 관련 함수 ##
 # =====================================================================
-# 2. 조리시간 관련 함수
-# =====================================================================
+# 2-1. 반찬별 조리시간 데이터
 def get_dish_cooking_times() -> Dict[str, int]:
-    """
-    반찬별 조리시간 데이터 반환
-    
-    Returns:
-        반찬명: 조리시간(분) 딕셔너리
-    """
+
     return {
         # 무침류 (1-3분)
         '콩나물무침': 1, '미나리무침': 2, '무생채': 2, '시금치나물 - 90g': 3,
@@ -286,24 +248,14 @@ def get_dish_cooking_times() -> Dict[str, int]:
         '우엉잡채 - 80g': 3, '만두속재료_요리놀이터': 3,
     }
 
-
+# 2-2. 특정 반찬의 총 조리시간 계산 함수
 def get_cooking_time(dish_name: str, quantity: int = 1) -> float:
-    """
-    특정 반찬의 총 조리시간 계산
-    
-    Args:
-        dish_name: 반찬명
-        quantity: 수량
-    
-    Returns:
-        총 조리시간 (분)
-    """
     cooking_times = get_dish_cooking_times()
     
     if dish_name in cooking_times:
         base_time = cooking_times[dish_name]
     else:
-        base_time = DEFAULT_UNKNOWN_COOKING_TIME
+        base_time = DEFAULT_UNKNOWN_COOKING_TIME # 기본 조리시간이 없는 경우
         print(f"⚠️ '{dish_name}' 조리시간을 찾을 수 없어 기본값 {base_time}분 사용")
     
     # 수량 비례 시간 추가
@@ -311,7 +263,7 @@ def get_cooking_time(dish_name: str, quantity: int = 1) -> float:
     
     return total_time
 
-
+# 2-3. 조리시간 DataFrame 생성 함수
 def create_cooking_time_dataframe() -> pd.DataFrame:
     """조리시간 데이터를 DataFrame으로 변환"""
     cooking_times = get_dish_cooking_times()
@@ -324,28 +276,16 @@ def create_cooking_time_dataframe() -> pd.DataFrame:
     return df.sort_values('기본조리시간(분)')
 
 
-# =====================================================================
+
+
 # 3. VRP 최적화 함수
 # =====================================================================
+# 3-1. VRP 최적화 함수
 def solve_dish_production_vrp(embedding_result: Dict[str, Any],
                              changeover_matrix: pd.DataFrame,
                              orders_df: pd.DataFrame,
                              num_lines: int = DEFAULT_NUM_LINES,
                              max_time: int = DEFAULT_MAX_TIME) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-    """
-    Multiple Depot VRP로 반찬 생산 최적화
-    
-    Args:
-        embedding_result: 벡터 임베딩 결과
-        changeover_matrix: 전환시간 매트릭스
-        orders_df: 주문 데이터 DataFrame
-        num_lines: 생산라인 수
-        max_time: 최대 조리시간
-    
-    Returns:
-        (manager, routing, solution) 튜플
-    """
-    print("=== 데이터 준비 중 ===")
     
     # 주문된 반찬별 총 수량 계산
     dish_demands = orders_df.groupby('상품명')['수량'].sum().to_dict()
@@ -364,8 +304,6 @@ def solve_dish_production_vrp(embedding_result: Dict[str, Any],
     print(f"조리 시간 범위: {min(cooking_times.values()):.1f}분 ~ {max(cooking_times.values()):.1f}분")
     
     # 거리 매트릭스 생성
-    print("\n=== 거리 매트릭스 생성 중 ===")
-    
     num_depots = num_lines
     num_nodes = num_depots + num_dishes
     
@@ -400,8 +338,6 @@ def solve_dish_production_vrp(embedding_result: Dict[str, Any],
             distance_matrix[node_i][node_j] = changeover_time
     
     # VRP 모델 생성
-    print("\n=== VRP 모델 생성 중 ===")
-    
     depot_starts = list(range(num_lines))
     depot_ends = list(range(num_lines))
     
@@ -421,10 +357,8 @@ def solve_dish_production_vrp(embedding_result: Dict[str, Any],
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
     
     # 시간 제약 설정
-    print("\n=== 제약 조건 설정 중 ===")
-    
     def time_callback(from_index: int) -> int:
-        """각 노드에서의 시간 소모량"""
+        # 각 노드에서의 시간 소모량
         from_node = manager.IndexToNode(from_index)
         
         # depot이면 시간 소모 없음
@@ -466,8 +400,6 @@ def solve_dish_production_vrp(embedding_result: Dict[str, Any],
         routing.AddVariableMinimizedByFinalizer(var)
     
     # 솔버 설정
-    print("\n=== 최적화 시작 ===")
-    
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
@@ -485,17 +417,16 @@ def solve_dish_production_vrp(embedding_result: Dict[str, Any],
         print_solution(manager, routing, solution, ordered_dishes, cooking_times, num_depots)
         return manager, routing, solution
     else:
-        print("❌ 해를 찾을 수 없습니다!")
+        print("해를 찾을 수 없습니다!")
         return None, None, None
 
-
+# 3-2. 최적화 결과 출력 함수
 def print_solution(manager: Any, routing: Any, solution: Any,
                   ordered_dishes: List[str], cooking_times: Dict[str, float],
                   num_depots: int) -> None:
-    """최적화 결과 출력"""
     
     print("\n" + "="*50)
-    print("🎯 최적화 결과")
+    print("최적화 결과")
     print("="*50)
     
     max_line_time = 0
@@ -532,33 +463,22 @@ def print_solution(manager: Any, routing: Any, solution: Any,
         
         max_line_time = max(max_line_time, route_time)
     
-    print(f"\n🏆 전체 완료 시간 (Makespan): {max_line_time:.1f}분")
-    print(f"⏰ 제한 시간 대비: {max_line_time/DEFAULT_MAX_TIME*100:.1f}%")
+    print(f"\n 전체 완료 시간 (Makespan): {max_line_time:.1f}분")
+    print(f" 제한 시간 대비: {max_line_time/DEFAULT_MAX_TIME*100:.1f}%")
     
     if max_line_time <= DEFAULT_MAX_TIME:
-        print("✅ 시간 제약 만족!")
+        print("시간 제약 만족!")
     else:
-        print("⚠️  시간 제약 초과!")
+        print("시간 제약 초과!")
 
 
-# =====================================================================
+
 # 4. 벡터 데이터베이스 저장 함수
 # =====================================================================
+# 4-1. 최적화 결과를 벡터 데이터베이스에 저장하는 함수
 def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
                                  ordered_dishes: List[str], cooking_times: Dict[str, float],
                                  num_depots: int, file_name: Optional[str] = None) -> None:
-    """
-    최적화 결과를 벡터 데이터베이스에 저장
-    
-    Args:
-        manager: VRP 매니저 객체
-        routing: VRP 라우팅 객체  
-        solution: VRP 솔루션 객체
-        ordered_dishes: 주문된 반찬 리스트
-        cooking_times: 반찬별 조리시간 딕셔너리
-        num_depots: depot 수
-        file_name: 입력 파일명
-    """
     try:
         # 임베딩 모델 로드
         embeddings = OllamaEmbeddings(model="mxbai-embed-large")
@@ -610,16 +530,16 @@ def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
                 })
                 max_line_time = max(max_line_time, route_time)
         
-        # 1. 전체 요약 문서
+        # 저장된 정보 1 : 전체 요약 문서
         summary_text = f"""
-최적화 실행 시간: {timestamp}
-전체 완료시간: {max_line_time:.1f}분
-제한시간 대비: {max_line_time/DEFAULT_MAX_TIME*100:.1f}%
-제약조건 만족: {'예' if max_line_time <= DEFAULT_MAX_TIME else '아니오'}
-총 반찬 종류: {len(ordered_dishes)}개
-활성 생산라인: {len(line_info)}개
-입력파일: {file_name or '알 수 없음'}
-        """.strip()
+                        최적화 실행 시간: {timestamp}
+                        전체 완료시간: {max_line_time:.1f}분
+                        제한시간 대비: {max_line_time/DEFAULT_MAX_TIME*100:.1f}%
+                        제약조건 만족: {'예' if max_line_time <= DEFAULT_MAX_TIME else '아니오'}
+                        총 반찬 종류: {len(ordered_dishes)}개
+                        활성 생산라인: {len(line_info)}개
+                        입력파일: {file_name or '알 수 없음'}
+                        """.strip()
         
         documents.append(Document(
             page_content=summary_text,
@@ -631,18 +551,18 @@ def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
             }
         ))
         
-        # 2. 라인별 상세 정보
+        # 저장된 정보 2 : 라인별 상세 정보
         for line in line_info:
             schedule_text = " → ".join(line['dishes'])
             times_text = " → ".join([f"{t}분" for t in line['times']])
             
             line_text = f"""
-라인{line['line_id']} 생산스케줄:
-생산순서: {schedule_text}
-조리시간: {times_text}
-총 작업시간: {line['total_time']}분
-효율성: {line['total_time']/DEFAULT_MAX_TIME*100:.1f}%
-            """.strip()
+                        라인{line['line_id']} 생산스케줄:
+                        생산순서: {schedule_text}
+                        조리시간: {times_text}
+                        총 작업시간: {line['total_time']}분
+                        효율성: {line['total_time']/DEFAULT_MAX_TIME*100:.1f}%
+                        """.strip()
             
             documents.append(Document(
                 page_content=line_text,
@@ -654,7 +574,7 @@ def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
                 }
             ))
         
-        # 3. 개별 반찬 정보
+        # 저장된 정보 3 : 개별 반찬 정보
         dish_texts = []
         for line in line_info:
             for dish, time in zip(line['dishes'], line['times']):
@@ -672,23 +592,23 @@ def save_optimization_to_vectordb(manager: Any, routing: Any, solution: Any,
         
         # 벡터 DB에 저장
         vector_store.add_documents(documents)
-        print(f"✅ 최적화 결과 벡터 DB 저장 완료 ({len(documents)}개 문서)")
+        print(f"최적화 결과 벡터 DB 저장 완료 ({len(documents)}개 문서)")
         
     except Exception as e:
-        print(f"❌ 벡터 DB 저장 중 오류: {str(e)}")
+        print(f"벡터 DB 저장 중 오류: {str(e)}")
 
 
-# =====================================================================
+
 # 5. 메인 실행 함수들
 # =====================================================================
+# 5-1. 생산 최적화 실행 함수
 def run_vrp_optimization(embedding_result: Dict[str, Any],
                         changeover_matrix: pd.DataFrame,
                         orders_df: pd.DataFrame,
                         num_lines: int = DEFAULT_NUM_LINES,
                         max_time: int = DEFAULT_MAX_TIME) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-    """VRP 최적화 실행"""
     
-    print("🚀 반찬 생산 최적화를 시작합니다!")
+    print("생산 최적화를 시작합니다!")
     
     return solve_dish_production_vrp(
         embedding_result=embedding_result,
@@ -698,23 +618,12 @@ def run_vrp_optimization(embedding_result: Dict[str, Any],
         max_time=max_time
     )
 
-
+# 5-2. 전체 최적화 프로세스 실행 함수
 def run_full_optimization(file_path: str,
                          dish_column: str = '상품명',
                          num_lines: int = DEFAULT_NUM_LINES,
                          max_time: int = DEFAULT_MAX_TIME) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-    """
-    전체 최적화 프로세스 실행
-    
-    Args:
-        file_path: Excel 파일 경로
-        dish_column: 반찬명 컬럼명
-        num_lines: 생산라인 수
-        max_time: 최대 조리시간
-    
-    Returns:
-        (manager, routing, solution) 튜플
-    """
+
     global current_file_name
     current_file_name = os.path.basename(file_path)
     
@@ -748,16 +657,12 @@ def run_full_optimization(file_path: str,
     return manager, routing, solution
 
 
+
+# 6. 생산 최적화 도구
+# =====================================================================
+# 6-1. 반찬 최적화 도구 함수 : Agent로 전달되는 함수
 def dish_optimization_tool(query: str) -> str:
-    """
-    반찬 생산 최적화 도구 - Agent에서 호출
-    
-    Args:
-        query: 파일 경로 (쉼표로 구분된 경우 첫 번째 값 사용)
-    
-    Returns:
-        최적화 결과 메시지
-    """
+
     global last_optimization_output, last_optimization_text
 
     try:
@@ -766,9 +671,9 @@ def dish_optimization_tool(query: str) -> str:
         
         # 파일 존재 여부 확인
         if not os.path.exists(file_path):
-            return f"❌ 파일을 찾을 수 없습니다: {file_path}"
+            return f"파일을 찾을 수 없습니다: {file_path}"
         
-        print(f"📊 반찬 최적화 시작: {file_path}")
+        print(f"반찬 최적화 시작: {file_path}")
         
         # stdout 캡처 시작
         captured_output = StdoutCapture()
@@ -795,20 +700,20 @@ def dish_optimization_tool(query: str) -> str:
         # 캡처된 출력을 실제로 출력
         print(captured_text)
 
-        return "✅ 반찬 생산 최적화 완료! 위에 상세한 결과가 출력되었으며 벡터 DB에도 저장되었습니다."
+        return "반찬 생산 최적화 완료! 위에 상세한 결과가 출력되었으며 벡터 DB에도 저장되었습니다."
         
     except Exception as e:
-        return f"❌ 최적화 중 오류 발생: {str(e)}"
+        return f"최적화 중 오류 발생: {str(e)}"
 
 
 
-# 6. 테스트 실행부
+# 테스트 실행부
 # =====================================================================
 if __name__ == "__main__":
-    test_file = "/Users/jibaekjang/VS-Code/Local_AI_Agent_LLM/생산전략_비교_분석데이터_전처리.xlsx"
+    test_file = "/Users/jibaekjang/VS-Code/AI_Agent/product_data_2022_04_01.xlsx"
     
     if os.path.exists(test_file):
         run_full_optimization(test_file)
     else:
-        print(f"❌ 테스트 파일을 찾을 수 없습니다: {test_file}")
+        print(f"테스트 파일을 찾을 수 없습니다: {test_file}")
         print("파일 경로를 확인해주세요.")

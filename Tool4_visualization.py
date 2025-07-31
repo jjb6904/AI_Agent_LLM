@@ -1,7 +1,4 @@
-# ============================================================================
-# visualization_tool.py - 최적화 결과 시각화 전용 모듈
-# ============================================================================
-
+# visualization_tool.py : Plotly 기반 최적화 결과 시각화 Tool
 import re
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -9,19 +6,16 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-#import Tool1_opti_vrp  # VRP 모듈의 전역 변수 접근을 위해 import
 import Tool1_opti_vrp
+import plotly.io as pio
 
-# ============================================================================
-# Tool 3 : plotly 기반 시각화
-# ============================================================================
+# 최적화 결과 시각화 도구 : Agent호출용
 def optimization_visualizer_tool(query: str) -> str:
-    """최적화 결과 시각화 도구 (Agent에서 이동)"""
     
     try:
         # 최적화 결과가 있는지 확인
         if Tool1_opti_vrp.last_optimization_text is None:
-            return "❌ 먼저 반찬 생산 최적화를 실행해주세요."
+            return "먼저 반찬 생산 최적화를 실행해주세요."
         
         # 쿼리가 문자열인지 확인하고 안전하게 처리
         if not isinstance(query, str):
@@ -43,7 +37,7 @@ def optimization_visualizer_tool(query: str) -> str:
         else:
             chart_type = "gantt"  # 기본값
         
-        print(f"📊 시각화 타입: {chart_type}")
+        print(f"시각화 타입: {chart_type}")
         
         # 시각화 실행 (전역 변수에서 캡처된 텍스트 사용)
         try:
@@ -53,27 +47,16 @@ def optimization_visualizer_tool(query: str) -> str:
             )
             return result
         except Exception as viz_error:
-            return f"❌ 시각화 도구 실행 중 오류: {str(viz_error)}\n💡 visualization_tool.py의 visualize_optimization_result 함수를 확인해주세요."
+            return f"시각화 도구 실행 중 오류: {str(viz_error)}\n💡 visualization_tool.py의 visualize_optimization_result 함수를 확인해주세요."
         
     except Exception as e:
-        return f"❌ 시각화 중 오류 발생: {str(e)}\n📋 오류 타입: {type(e).__name__}"
+        return f"시각화 중 오류 발생: {str(e)}\n📋 오류 타입: {type(e).__name__}"
 
+
+# 최적화 결과 파싱 및 데이터 구조화 함수
 def parse_optimization_result(optimization_text):
-    """
-    최적화 결과 텍스트를 파싱하여 구조화된 데이터로 변환
     
-    Parameters:
-    -----------
-    optimization_text : str
-        최적화 결과 텍스트
-    
-    Returns:
-    --------
-    dict: 파싱된 생산라인 데이터
-    """
-    
-    print(f"📋 파싱할 텍스트 길이: {len(optimization_text)}")
-    print(f"📋 텍스트 미리보기:\n{optimization_text[:500]}...")
+    print(f"텍스트 미리보기:\n{optimization_text[:500]}...")
     
     lines_data = []
     
@@ -81,14 +64,12 @@ def parse_optimization_result(optimization_text):
     line_pattern = r'생산라인 (\d+): (.*?) -> 완료.*?총 소요시간: ([\d.]+)분'
     matches = re.findall(line_pattern, optimization_text, re.DOTALL)
     
-    print(f"🔍 발견된 생산라인 수: {len(matches)}")
-    
     for match in matches:
         line_id = int(match[0])
         dishes_text = match[1]
         total_time = float(match[2])
         
-        print(f"📊 라인 {line_id}: {total_time:.1f}분, 반찬: {dishes_text[:50]}...")
+        print(f"라인 {line_id}: {total_time:.1f}분, 반찬: {dishes_text[:50]}...")
         
         # 각 반찬과 시간 추출 - 더 정확한 패턴
         dish_pattern = r'([^(]+?)\(([\d.]+)분\)'
@@ -153,7 +134,7 @@ def create_gantt_chart(parsed_data):
     """간트차트 생성 - 호버 템플릿 완전 수정"""
     
     if not parsed_data['lines']:
-        print("❌ 생성할 라인 데이터가 없습니다.")
+        print("생성할 라인 데이터가 없습니다.")
         return None
     
     fig = go.Figure()
@@ -225,8 +206,9 @@ def create_gantt_chart(parsed_data):
     
     return fig
 
+
+# 효율성 분석 차트 생성 함수
 def create_efficiency_chart(parsed_data):
-    """효율성 분석 차트 생성"""
     
     if not parsed_data['lines']:
         return None
@@ -311,8 +293,9 @@ def create_efficiency_chart(parsed_data):
     
     return fig
 
+
+# 병목 구간 분석 히트맵생성 함수
 def create_bottleneck_analysis(parsed_data):
-    """병목 구간 분석 히트맵"""
     
     if not parsed_data['lines'] or parsed_data['makespan'] <= 0:
         return None
@@ -368,17 +351,17 @@ def create_summary_report(parsed_data):
         return "❌ 분석할 데이터가 없습니다."
     
     summary = f"""
-📊 반찬 생산 최적화 결과 종합 분석
-{'='*50}
+            반찬 생산 최적화 결과 종합 분석
+            {'='*50}
+            
+            핵심 지표:
+             • 총 생산라인: {parsed_data['summary']['total_lines']}개
+             • 전체 반찬 수: {parsed_data['summary']['total_dishes']}개  
+             • 최대 소요시간: {parsed_data['makespan']:.1f}분
+             • 평균 소요시간: {parsed_data['summary']['avg_time']:.1f}분
 
-📈 핵심 지표:
-• 총 생산라인: {parsed_data['summary']['total_lines']}개
-• 전체 반찬 수: {parsed_data['summary']['total_dishes']}개  
-• 최대 소요시간: {parsed_data['makespan']:.1f}분
-• 평균 소요시간: {parsed_data['summary']['avg_time']:.1f}분
-
-📋 라인별 상세 정보:
-"""
+            라인별 상세 정보:
+            """
     
     for line in parsed_data['lines']:
         if parsed_data['makespan'] > 0:
@@ -394,13 +377,13 @@ def create_summary_report(parsed_data):
         time_diff = max_line['total_time'] - min_line['total_time']
         
         summary += f"""
-🔍 병목 분석:
-• 가장 느린 라인: 라인 {max_line['line_id']} ({max_line['total_time']:.1f}분)
-• 가장 빠른 라인: 라인 {min_line['line_id']} ({min_line['total_time']:.1f}분)  
-• 라인간 편차: {time_diff:.1f}분 ({time_diff/parsed_data['summary']['avg_time']*100:.1f}%)
+                    병목 분석:
+                     • 가장 느린 라인: 라인 {max_line['line_id']} ({max_line['total_time']:.1f}분)
+                     • 가장 빠른 라인: 라인 {min_line['line_id']} ({min_line['total_time']:.1f}분)  
+                     • 라인간 편차: {time_diff:.1f}분 ({time_diff/parsed_data['summary']['avg_time']*100:.1f}%)
 
-💡 개선 제안:
-"""
+                    개선 제안:
+                    """
         
         if time_diff > 50:
             summary += "• 라인간 편차가 큽니다. 반찬 재배치를 고려해보세요.\n"
@@ -413,11 +396,10 @@ def create_summary_report(parsed_data):
     
     return summary
 
-# Plotly 렌더링 설정 추가
-import plotly.io as pio
 
+
+# Plotly 렌더링 환경 설정함수
 def setup_plotly_renderer():
-    """Plotly 렌더링 환경 설정"""
     try:
         # 사용 가능한 렌더러 확인
         available_renderers = pio.renderers
@@ -426,36 +408,37 @@ def setup_plotly_renderer():
         # 우선순위에 따라 렌더러 설정
         if 'browser' in available_renderers:
             pio.renderers.default = 'browser'
-            print("✅ 브라우저 렌더러 설정 완료")
+            print("브라우저 렌더러 설정 완료")
         elif 'plotly_mimetype' in available_renderers:
             pio.renderers.default = 'plotly_mimetype'
-            print("✅ plotly_mimetype 렌더러 설정 완료")
+            print("plotly_mimetype 렌더러 설정 완료")
         else:
             # 대체 렌더러 설정
             pio.renderers.default = 'png'
-            print("✅ PNG 렌더러 설정 완료 (대체)")
+            print("PNG 렌더러 설정 완료 (대체)")
             
     except Exception as e:
         print(f"⚠️ 렌더러 설정 실패: {e}")
         # 기본 설정 유지
 
+
+# 안전한 차트 표시 함수
 def safe_show_figure(fig, chart_name="차트"):
-    """안전한 차트 표시 함수"""
     try:
         # 첫 번째 시도: 기본 show()
         fig.show()
-        return True, f"✅ {chart_name} 표시 완료"
+        return True, f"{chart_name} 표시 완료"
         
     except Exception as e:
-        print(f"⚠️ 기본 렌더링 실패: {e}")
+        print(f"기본 렌더링 실패: {e}")
         
         try:
             # 두 번째 시도: 브라우저 렌더러
             fig.show(renderer='browser')
-            return True, f"✅ {chart_name} 표시 완료 (브라우저)"
+            return True, f"{chart_name} 표시 완료 (브라우저)"
             
         except Exception as e2:
-            print(f"⚠️ 브라우저 렌더링 실패: {e2}")
+            print(f"브라우저 렌더링 실패: {e2}")
             
             try:
                 # 세 번째 시도: HTML 파일로 저장
@@ -469,10 +452,10 @@ def safe_show_figure(fig, chart_name="차트"):
                 
                 # 브라우저에서 열기
                 webbrowser.open('file://' + html_path)
-                return True, f"✅ {chart_name} HTML 파일로 저장 및 표시 완료"
+                return True, f"{chart_name} HTML 파일로 저장 및 표시 완료"
                 
             except Exception as e3:
-                print(f"⚠️ HTML 저장 실패: {e3}")
+                print(f"HTML 저장 실패: {e3}")
                 
                 try:
                     # 네 번째 시도: 이미지로 저장
@@ -483,50 +466,38 @@ def safe_show_figure(fig, chart_name="차트"):
                         img_path = f.name
                     
                     print(f"📁 {chart_name} 이미지 저장: {img_path}")
-                    return True, f"✅ {chart_name} 이미지로 저장 완료: {img_path}"
+                    return True, f"{chart_name} 이미지로 저장 완료: {img_path}"
                     
                 except Exception as e4:
-                    return False, f"❌ {chart_name} 표시 실패: 모든 렌더링 방법 실패"
+                    return False, f"{chart_name} 표시 실패: 모든 렌더링 방법 실패"
 
+
+# 최적화 결과 시각화 메인 함수
 def visualize_optimization_result(optimization_text, chart_type="all"):
-    """
-    최적화 결과 시각화 메인 함수
-    
-    Parameters:
-    -----------
-    optimization_text : str
-        최적화 결과 텍스트
-    chart_type : str
-        생성할 차트 타입 ("gantt", "efficiency", "bottleneck", "summary", "all")
-        
-    Returns:
-    --------
-    str : 시각화 완료 메시지
-    """
     
     try:
-        print("📊 시각화 시작...")
+        print("시각화 시작...")
         
         # Plotly 렌더러 설정
         setup_plotly_renderer()
         
-        print(f"📋 입력 텍스트 타입: {type(optimization_text)}")
+        print(f"입력 텍스트 타입: {type(optimization_text)}")
         
         # 입력 타입 확인 및 변환
         if not isinstance(optimization_text, str):
-            return "❌ 입력 데이터가 문자열이 아닙니다."
+            return "입력 데이터가 문자열이 아닙니다."
         
         if len(optimization_text) < 50:
-            return "❌ 최적화 결과 텍스트가 너무 짧습니다. 올바른 최적화 결과인지 확인해주세요."
+            return "최적화 결과 텍스트가 너무 짧습니다. 올바른 최적화 결과인지 확인해주세요."
         
         # 결과 파싱
-        print("🔍 결과 파싱 중...")
+        print("결과 파싱 중...")
         parsed_data = parse_optimization_result(optimization_text)
         
         if not parsed_data['lines']:
-            return "❌ 최적화 결과를 파싱할 수 없습니다. 생산라인 정보가 없습니다."
+            return "최적화 결과를 파싱할 수 없습니다. 생산라인 정보가 없습니다."
         
-        print(f"✅ 파싱 완료: {len(parsed_data['lines'])}개 라인 발견")
+        print(f"파싱 완료: {len(parsed_data['lines'])}개 라인 발견")
         
         # 차트 타입에 따른 시각화
         if chart_type == "gantt":
@@ -535,7 +506,7 @@ def visualize_optimization_result(optimization_text, chart_type="all"):
                 success, message = safe_show_figure(fig, "간트차트")
                 return message
             else:
-                return "❌ 간트차트 생성에 실패했습니다."
+                return "간트차트 생성에 실패했습니다."
                 
         elif chart_type == "efficiency":
             fig = create_efficiency_chart(parsed_data)
@@ -543,7 +514,7 @@ def visualize_optimization_result(optimization_text, chart_type="all"):
                 success, message = safe_show_figure(fig, "효율성 분석 대시보드")
                 return message
             else:
-                return "❌ 효율성 차트 생성에 실패했습니다."
+                return "효율성 차트 생성에 실패했습니다."
                 
         elif chart_type == "bottleneck":
             fig = create_bottleneck_analysis(parsed_data)
@@ -551,89 +522,51 @@ def visualize_optimization_result(optimization_text, chart_type="all"):
                 success, message = safe_show_figure(fig, "병목 구간 분석 히트맵")
                 return message
             else:
-                return "❌ 병목 분석 차트 생성에 실패했습니다."
+                return "병목 분석 차트 생성에 실패했습니다."
                 
         elif chart_type == "summary":
             report = create_summary_report(parsed_data)
             print(report)
-            return "📋 종합 분석 리포트가 생성되었습니다!"
+            return "종합 분석 리포트가 생성되었습니다!"
             
         else:  # "all" 또는 기타
             # 모든 차트 생성
             results = []
             
-            print("📊 간트차트 생성 중...")
+            print("간트차트 생성 중...")
             gantt_fig = create_gantt_chart(parsed_data)
             if gantt_fig:
                 success, message = safe_show_figure(gantt_fig, "간트차트")
                 results.append(("간트차트", success, message))
             
-            print("📈 효율성 분석 차트 생성 중...")
+            print("효율성 분석 차트 생성 중...")
             efficiency_fig = create_efficiency_chart(parsed_data)
             if efficiency_fig:
                 success, message = safe_show_figure(efficiency_fig, "효율성 분석")
                 results.append(("효율성 분석", success, message))
             
-            print("🔥 병목 분석 차트 생성 중...")
+            print("병목 분석 차트 생성 중...")
             bottleneck_fig = create_bottleneck_analysis(parsed_data)
             if bottleneck_fig:
                 success, message = safe_show_figure(bottleneck_fig, "병목 분석")
                 results.append(("병목 분석", success, message))
             
             # 종합 리포트도 출력
-            print("📋 종합 리포트 생성 중...")
+            print("종합 리포트 생성 중...")
             report = create_summary_report(parsed_data)
             print(report)
-            results.append(("종합 리포트", True, "✅ 종합 리포트 생성 완료"))
+            results.append(("종합 리포트", True, "종합 리포트 생성 완료"))
             
             # 결과 요약
             success_count = sum(1 for _, success, _ in results if success)
-            result_summary = f"🎨 전체 시각화 완료! ({success_count}/{len(results)} 성공)\n"
+            result_summary = f"전체 시각화 완료! ({success_count}/{len(results)} 성공)\n"
             
             for chart_name, success, message in results:
-                status = "✅" if success else "❌"
-                result_summary += f"{status} {chart_name}\n"
+                result_summary += f"{chart_name}\n"
             
             return result_summary
             
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
-        return f"❌ 시각화 중 오류 발생: {str(e)}\n🔍 상세 오류:\n{error_detail}"
-
-# ============================================================================
-# 직접 실행할 때만 테스트 실행
-# ============================================================================
-
-if __name__ == "__main__":
-    # 테스트용 최적화 결과 (더 현실적인 데이터)
-    test_result = """
-🚀 반찬 생산 최적화를 시작합니다!
-=== 데이터 준비 중 ===
-총 248개의 고유한 반찬 발견
-총 생산량: 1500개
-
-==================================================
-🎯 최적화 결과
-==================================================
-생산라인 1: 무생채(2.2분) -> 달래김무침(2.1분) -> 달래장(1.2분) -> 콩나물무침(1.5분) -> 완료
-⏱️  총 소요시간: 312.9분
---------------------------------------------------
-생산라인 2: 잡채 - 450g(3.1분) -> 궁중 떡볶이_반조리 - 520g(5.1분) -> 한우 소고기 감자국(4.8분) -> 완료  
-⏱️  총 소요시간: 296.5분
---------------------------------------------------
-생산라인 3: 한돈 매콤 제육볶음_반조리 - 500g(5.2분) -> 메추리알 간장조림(4.9분) -> 완료
-⏱️  총 소요시간: 285.1분
---------------------------------------------------
-생산라인 4: 계란찜(5.0분) -> 야채계란말이(3.2분) -> 한우 주먹밥(2.8분) -> 완료
-⏱️  총 소요시간: 301.4분
---------------------------------------------------
-
-🏆 전체 완료 시간 (Makespan): 312.9분
-⏰ 제한 시간 대비: 130.4%
-⚠️  시간 제약 초과!
-    """
-    
-    print("=== 시각화 도구 테스트 ===")
-    result = visualize_optimization_result(test_result, "all")
-    print(result)
+        return f"시각화 중 오류 발생: {str(e)}\n 상세 오류:\n{error_detail}"
