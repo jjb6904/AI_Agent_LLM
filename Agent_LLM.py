@@ -14,13 +14,13 @@ import Tool2_data_analysis      # 데이터 분석
 import Tool4_visualization      # plotly기반 시각화
 import Tool3_sql                # sql기반 검색
 import Tool5_vector_db          # vector_db연결(RAG)
-
+import STT_Ai                # Faster-Whisper STT
 
 
 # LLM : Gemma3:12b 양자화 버전
 # ============================================================================
 model = OllamaLLM(model="gemma3:12b-it-qat",
-                  temperature=0.1,     # 아주 약한 창의성 0.1정도
+                  temperature=0,       # 아주 약한 창의성 0
                   repeat_penalty=1.1,  # 반복되는 토큰에 패널티 부여(10%만큼)
                   top_k=20,            # 가장 높은 확률을 지닌 토큰 20개만 답변생성에 사용
                   timeout=30,          # 추론시간 30초로 제한
@@ -78,7 +78,7 @@ tools = [
     자연어로 상품이나 최적화 결과를 검색할 때 사용하세요.
     """,
     func=Tool5_vector_db.vector_search_tool
-)]
+    )]
 
 
 
@@ -131,7 +131,7 @@ main_agent = initialize_agent(
     5. vector_search: For searching production optimization results from vector database
         - Search optimization results: query saved production schedules, line assignments, and performance metrics
         - Returns structured data in table format: Line No | Seq | Product Name | Production Time
-
+  
     Tool selection guide:
         - Data analysis: 생산 데이터 분석/시각화가 필요할 때  
         - Dish optimization: 반찬 생산라인 최적화가 필요할 때
@@ -145,29 +145,57 @@ main_agent = initialize_agent(
 )
 
 
-
 # 메인 실행함수 정의
 # ============================================================================
 def main():
-    """메인 실행 함수"""
     while True:
-        print("\n" + "="*60)
-        question = input("질문을 입력하세요(종료 : q) : ")
-        print()
+        option = input("입력 모드 선택(1 = Text / 2 = STT) : ").strip()
         
-        if question.lower() == "q":
-            print("시스템을 종료합니다.")
-            break
-        try:
-            print("처리 중...")
-            result = main_agent.invoke(question)
-
-            clean_output = result['output'].replace('<end_of_turn>', '').strip()
-            print(f"\n[답변] \n{clean_output}")
+        # Text 모드
+        if option == "1":
+            while True:
+                print("\n" + "="*60)
+                question = input("질문을 입력하세요(종료 : q) : ")
             
-        except Exception as e:
-            print(f"오류 발생: {str(e)}")
+                if question.lower() == "q":
+                    print("시스템을 종료합니다.")
+                    return
+                try:
+                    print("처리 중...")
+                    result = main_agent.invoke(question)
+                    clean_output = result['output'].replace('<end_of_turn>', '').strip()
+                    print(f"\n[답변] \n{clean_output}")
+                except Exception as e:
+                    print(f"오류 발생: {str(e)}")
+        
+        # STT 모드
+        elif option == "2":
+            try:
+                stt_instance = STT_Ai.get_stt_instance(model_size="base")
+            except Exception as e:
+                print(f"STT 초기화 실패: {e}")
+                continue
+                
+            while True:
+                print("\n" + "="*60)
+                question = stt_instance.listen_once()
 
+                if not question:
+                    continue
+                    
+                if stt_instance.is_exit_command(question):
+                    print("시스템을 종료합니다.")
+                    return
+                try:
+                    print("처리 중...")
+                    result = main_agent.invoke(question)
+                    clean_output = result['output'].replace('<end_of_turn>', '').strip()
+                    print(f"\n[답변] \n{clean_output}")
+                except Exception as e:
+                    print(f"오류 발생: {str(e)}")
+        
+        else:
+            print("1 또는 2를 입력해주세요.")
 
 
 # 메인 실행
